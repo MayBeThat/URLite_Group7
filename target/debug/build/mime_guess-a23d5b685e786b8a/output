@@ -1,1 +1,0 @@
-cargo:rustc-env=MIME_TYPES_GENERATED_PATH=/Users/tandang/url-shortener/target/debug/build/mime_guess-a23d5b685e786b8a/out/mime_types_generated.rs
