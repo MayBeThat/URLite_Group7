@@ -1,0 +1,3 @@
+[submodule "URLite"]
+	path = URLite
+	url = https://github.com/Michellein/URLite.git
