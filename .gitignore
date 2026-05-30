@@ -4,3 +4,9 @@ target/
 URLite_Group7/
 CLAUDE.md
 
+
+server/.env
+server/urls.db
+server/data/
+server.zip
+data/
