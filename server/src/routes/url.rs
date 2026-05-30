@@ -1,9 +1,11 @@
-use actix_web::{get, post, web, HttpRequest, HttpResponse, Responder};
+use actix_web::{delete, get, http::StatusCode, post, web, HttpRequest, HttpResponse, Responder};
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
 use crate::models::Claims;
+
+const BASE_URL: &str = "http://localhost:8080";
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -36,39 +38,54 @@ pub struct StatsResponse {
     pub clicks: Vec<ClickRecord>,
 }
 
+#[derive(Serialize)]
+pub struct UrlItem {
+    pub short_code: String,
+    pub short_url: String,
+    pub original_url: String,
+    pub created_at: String,
+    pub click_count: i64,
+}
+
 // ---------------------------------------------------------------------------
-// JWT helper
+// Helpers
 // ---------------------------------------------------------------------------
 
-/// Validate the `Authorization: Bearer <token>` header.
-/// Returns `Ok(claims)` on success, `Err(actix_web::Error)` on failure.
+fn json_err(status: StatusCode, msg: &str) -> actix_web::Error {
+    actix_web::error::InternalError::from_response(
+        msg.to_string(),
+        HttpResponse::build(status)
+            .content_type("application/json")
+            .body(serde_json::json!({"error": msg}).to_string()),
+    )
+    .into()
+}
+
+async fn resolve_user_id(db: &SqlitePool, username: &str) -> Result<Option<i64>, actix_web::Error> {
+    let row = sqlx::query!("SELECT id FROM users WHERE username = ?", username)
+        .fetch_optional(db)
+        .await
+        .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
+    Ok(row.and_then(|r| r.id))
+}
+
 fn require_jwt(req: &HttpRequest, jwt_secret: &str) -> Result<Claims, actix_web::Error> {
     let header = req
         .headers()
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| {
-            actix_web::error::ErrorUnauthorized(
-                serde_json::json!({"error": "Missing Authorization header"}).to_string(),
-            )
-        })?;
+        .ok_or_else(|| json_err(StatusCode::UNAUTHORIZED, "Missing Authorization header"))?;
 
-    let token = header.strip_prefix("Bearer ").ok_or_else(|| {
-        actix_web::error::ErrorUnauthorized(
-            serde_json::json!({"error": "Invalid Authorization header format"}).to_string(),
-        )
-    })?;
+    let token = header
+        .strip_prefix("Bearer ")
+        .ok_or_else(|| json_err(StatusCode::UNAUTHORIZED, "Invalid Authorization header format"))?;
 
     let token_data = decode::<Claims>(
         token,
         &DecodingKey::from_secret(jwt_secret.as_bytes()),
         &Validation::default(),
     )
-    .map_err(|_| {
-        actix_web::error::ErrorUnauthorized(
-            serde_json::json!({"error": "Invalid or expired token"}).to_string(),
-        )
-    })?;
+    .map_err(|_| json_err(StatusCode::UNAUTHORIZED, "Invalid or expired token"))?;
 
     Ok(token_data.claims)
 }
@@ -88,19 +105,13 @@ pub async fn shorten(
     let claims = require_jwt(&req, &jwt_secret)?;
 
     if !body.original_url.starts_with("http://") && !body.original_url.starts_with("https://") {
-        return Err(actix_web::error::ErrorBadRequest(
-            serde_json::json!({"error": "original_url must start with http:// or https://"})
-                .to_string(),
+        return Err(json_err(
+            StatusCode::BAD_REQUEST,
+            "original_url must start with http:// or https://",
         ));
     }
 
-    // Resolve user_id from username stored in JWT subject
-    let user_row = sqlx::query!("SELECT id FROM users WHERE username = ?", claims.sub)
-        .fetch_optional(db.get_ref())
-        .await
-        .map_err(actix_web::error::ErrorInternalServerError)?;
-
-    let user_id = user_row.map(|r| r.id);
+    let user_id = resolve_user_id(db.get_ref(), &claims.sub).await?;
 
     // Retry until a collision-free short code is found
     let code = loop {
@@ -111,7 +122,7 @@ pub async fn shorten(
         )
         .fetch_optional(db.get_ref())
         .await
-        .map_err(actix_web::error::ErrorInternalServerError)?;
+        .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
         if exists.is_none() {
             break candidate;
         }
@@ -125,16 +136,17 @@ pub async fn shorten(
     )
     .execute(db.get_ref())
     .await
-    .map_err(actix_web::error::ErrorInternalServerError)?;
+    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
 
     Ok(HttpResponse::Ok().json(ShortenResponse {
-        short_url: format!("http://localhost:8080/{}", code),
+        short_url: format!("{}/{}", BASE_URL, code),
         short_code: code,
     }))
 }
 
 /// GET /{code} — redirect to original URL and record the click
-#[get("/{code}")]
+/// Regex constrains to exactly 6 URL-safe chars so static files are not intercepted
+#[get("/{code:[a-zA-Z0-9_\\-]{6}}")]
 pub async fn redirect(
     req: HttpRequest,
     path: web::Path<String>,
@@ -145,12 +157,8 @@ pub async fn redirect(
     let row = sqlx::query!("SELECT id, original_url FROM urls WHERE short_code = ?", code)
         .fetch_optional(db.get_ref())
         .await
-        .map_err(actix_web::error::ErrorInternalServerError)?
-        .ok_or_else(|| {
-            actix_web::error::ErrorNotFound(
-                serde_json::json!({"error": "Short URL not found"}).to_string(),
-            )
-        })?;
+        .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?
+        .ok_or_else(|| json_err(StatusCode::NOT_FOUND, "Short URL not found"))?;
 
     // Record click
     let ip = req
@@ -162,18 +170,20 @@ pub async fn redirect(
         .get("User-Agent")
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
+    let clicked_at = chrono::Utc::now().to_rfc3339();
 
     sqlx::query!(
-        "INSERT INTO clicks (url_id, ip_address, user_agent) VALUES (?, ?, ?)",
+        "INSERT INTO clicks (url_id, clicked_at, ip_address, user_agent) VALUES (?, ?, ?, ?)",
         row.id,
+        clicked_at,
         ip,
         ua
     )
     .execute(db.get_ref())
     .await
-    .map_err(actix_web::error::ErrorInternalServerError)?;
+    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
 
-    Ok(HttpResponse::MovedPermanently()
+    Ok(HttpResponse::Found()
         .insert_header(("Location", row.original_url))
         .finish())
 }
@@ -198,12 +208,8 @@ pub async fn get_stats(
     )
     .fetch_optional(db.get_ref())
     .await
-    .map_err(actix_web::error::ErrorInternalServerError)?
-    .ok_or_else(|| {
-        actix_web::error::ErrorNotFound(
-            serde_json::json!({"error": "Short URL not found"}).to_string(),
-        )
-    })?;
+    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?
+    .ok_or_else(|| json_err(StatusCode::NOT_FOUND, "Short URL not found"))?;
 
     // Total click count
     let count_row = sqlx::query!(
@@ -212,7 +218,7 @@ pub async fn get_stats(
     )
     .fetch_one(db.get_ref())
     .await
-    .map_err(actix_web::error::ErrorInternalServerError)?;
+    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
 
     // Individual click records
     let click_rows = sqlx::query!(
@@ -221,7 +227,7 @@ pub async fn get_stats(
     )
     .fetch_all(db.get_ref())
     .await
-    .map_err(actix_web::error::ErrorInternalServerError)?;
+    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
 
     let clicks: Vec<ClickRecord> = click_rows
         .into_iter()
@@ -239,6 +245,86 @@ pub async fn get_stats(
         click_count: count_row.cnt as i64,
         clicks,
     }))
+}
+
+/// GET /urls — list all URLs created by the authenticated user
+#[get("/urls")]
+pub async fn list_urls(
+    req: HttpRequest,
+    db: web::Data<SqlitePool>,
+    jwt_secret: web::Data<String>,
+) -> Result<impl Responder, actix_web::Error> {
+    let claims = require_jwt(&req, &jwt_secret)?;
+
+    let user_id = match resolve_user_id(db.get_ref(), &claims.sub).await? {
+        Some(id) => id,
+        None => return Ok(HttpResponse::Ok().json(Vec::<UrlItem>::new())),
+    };
+
+    let rows = sqlx::query!(
+        "SELECT u.short_code, u.original_url, u.created_at, COUNT(c.id) as click_count
+         FROM urls u
+         LEFT JOIN clicks c ON c.url_id = u.id
+         WHERE u.user_id = ?
+         GROUP BY u.id
+         ORDER BY u.created_at DESC",
+        user_id
+    )
+    .fetch_all(db.get_ref())
+    .await
+    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
+
+    let items: Vec<UrlItem> = rows
+        .into_iter()
+        .map(|r| UrlItem {
+            short_url: format!("{}/{}", BASE_URL, r.short_code),
+            short_code: r.short_code,
+            original_url: r.original_url,
+            created_at: r.created_at,
+            click_count: r.click_count,
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(items))
+}
+
+/// DELETE /urls/{code} — xóa short URL thuộc về user đang đăng nhập
+#[delete("/urls/{code}")]
+pub async fn delete_url(
+    req: HttpRequest,
+    path: web::Path<String>,
+    db: web::Data<SqlitePool>,
+    jwt_secret: web::Data<String>,
+) -> Result<impl Responder, actix_web::Error> {
+    let claims = require_jwt(&req, &jwt_secret)?;
+    let code = path.into_inner();
+
+    let user_id = resolve_user_id(db.get_ref(), &claims.sub).await?
+        .ok_or_else(|| json_err(StatusCode::NOT_FOUND, "User not found"))?;
+
+    // Verify ownership before deleting
+    let url_row = sqlx::query!(
+        "SELECT id FROM urls WHERE short_code = ? AND user_id = ?",
+        code,
+        user_id
+    )
+    .fetch_optional(db.get_ref())
+    .await
+    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?
+    .ok_or_else(|| json_err(StatusCode::NOT_FOUND, "Link not found or not owned by you"))?;
+
+    // No ON DELETE CASCADE — delete clicks first
+    sqlx::query!("DELETE FROM clicks WHERE url_id = ?", url_row.id)
+        .execute(db.get_ref())
+        .await
+        .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
+
+    sqlx::query!("DELETE FROM urls WHERE id = ?", url_row.id)
+        .execute(db.get_ref())
+        .await
+        .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({"message": "Deleted"})))
 }
 
 // ---------------------------------------------------------------------------
