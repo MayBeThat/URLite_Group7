@@ -31,7 +31,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         let cors = Cors::default()
             .allowed_origin(&allowed_origin)
-            .allowed_methods(vec!["GET", "POST"])
+            .allowed_methods(vec!["GET", "POST", "DELETE"])
             .allowed_headers(vec![
                 actix_web::http::header::AUTHORIZATION,
                 actix_web::http::header::CONTENT_TYPE,
@@ -45,8 +45,11 @@ async fn main() -> std::io::Result<()> {
             .service(routes::auth::register)
             .service(routes::auth::login)
             .service(routes::url::shorten)
+            .service(routes::url::list_urls)
+            .service(routes::url::delete_url)
             .service(routes::url::get_stats)
             .service(routes::url::redirect)
+            .service(actix_files::Files::new("/", "./frontend/dist/").index_file("index.html"))
     })
     .bind(format!("0.0.0.0:{port}"))?
     .run()
