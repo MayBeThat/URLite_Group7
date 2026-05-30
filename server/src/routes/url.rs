@@ -6,6 +6,7 @@ use sqlx::SqlitePool;
 use crate::models::Claims;
 
 const BASE_URL: &str = "http://localhost:8080";
+const INTERNAL_ERR: &str = "Internal server error";
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -65,7 +66,7 @@ async fn resolve_user_id(db: &SqlitePool, username: &str) -> Result<Option<i64>,
     let row = sqlx::query!("SELECT id FROM users WHERE username = ?", username)
         .fetch_optional(db)
         .await
-        .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
+        .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERR))?;
     Ok(row.and_then(|r| r.id))
 }
 
@@ -122,7 +123,7 @@ pub async fn shorten(
         )
         .fetch_optional(db.get_ref())
         .await
-        .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
+        .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERR))?;
         if exists.is_none() {
             break candidate;
         }
@@ -136,7 +137,7 @@ pub async fn shorten(
     )
     .execute(db.get_ref())
     .await
-    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
+    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERR))?;
 
     Ok(HttpResponse::Ok().json(ShortenResponse {
         short_url: format!("{}/{}", BASE_URL, code),
@@ -157,7 +158,7 @@ pub async fn redirect(
     let row = sqlx::query!("SELECT id, original_url FROM urls WHERE short_code = ?", code)
         .fetch_optional(db.get_ref())
         .await
-        .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?
+        .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERR))?
         .ok_or_else(|| json_err(StatusCode::NOT_FOUND, "Short URL not found"))?;
 
     // Record click
@@ -181,7 +182,7 @@ pub async fn redirect(
     )
     .execute(db.get_ref())
     .await
-    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
+    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERR))?;
 
     Ok(HttpResponse::Found()
         .insert_header(("Location", row.original_url))
@@ -208,7 +209,7 @@ pub async fn get_stats(
     )
     .fetch_optional(db.get_ref())
     .await
-    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?
+    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERR))?
     .ok_or_else(|| json_err(StatusCode::NOT_FOUND, "Short URL not found"))?;
 
     // Total click count
@@ -218,7 +219,7 @@ pub async fn get_stats(
     )
     .fetch_one(db.get_ref())
     .await
-    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
+    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERR))?;
 
     // Individual click records
     let click_rows = sqlx::query!(
@@ -227,7 +228,7 @@ pub async fn get_stats(
     )
     .fetch_all(db.get_ref())
     .await
-    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
+    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERR))?;
 
     let clicks: Vec<ClickRecord> = click_rows
         .into_iter()
@@ -272,7 +273,7 @@ pub async fn list_urls(
     )
     .fetch_all(db.get_ref())
     .await
-    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
+    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERR))?;
 
     let items: Vec<UrlItem> = rows
         .into_iter()
@@ -310,19 +311,19 @@ pub async fn delete_url(
     )
     .fetch_optional(db.get_ref())
     .await
-    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?
+    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERR))?
     .ok_or_else(|| json_err(StatusCode::NOT_FOUND, "Link not found or not owned by you"))?;
 
     // No ON DELETE CASCADE — delete clicks first
     sqlx::query!("DELETE FROM clicks WHERE url_id = ?", url_row.id)
         .execute(db.get_ref())
         .await
-        .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
+        .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERR))?;
 
     sqlx::query!("DELETE FROM urls WHERE id = ?", url_row.id)
         .execute(db.get_ref())
         .await
-        .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"))?;
+        .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERR))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({"message": "Deleted"})))
 }

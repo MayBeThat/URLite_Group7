@@ -133,16 +133,6 @@ a:hover { text-decoration: underline; }
   transform: none;
 }
 
-.btn-outline {
-  background: transparent;
-  color: var(--blue);
-  border: 1.5px solid var(--blue);
-}
-.btn-outline:hover {
-  background: var(--blue-light);
-  text-decoration: none;
-}
-
 .btn-ghost {
   background: transparent;
   color: rgba(255,255,255,0.7);
