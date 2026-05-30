@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>URLite</title>
+  <title>URLite — Free URL Shortener with Click Analytics</title>
+  <meta name="description" content="Shorten long URLs to short, trackable links. Free, fast, and powerful — with built-in click analytics. Built with Rust + Actix-web." />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%232563eb'/><text x='50%25' y='65%25' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='800' font-size='55'>U</text></svg>" />
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -157,8 +159,23 @@
 
     <!-- Footer -->
     <footer class="footer">
-      <strong>URLite</strong> — Final project for
-      <em>Nature of Programming Languages</em> · Group 7
+      <div class="footer-inner">
+        <div class="footer-col">
+          <p class="footer-brand">URLite</p>
+          <p class="footer-tag">Shorten links. Track every click.</p>
+        </div>
+        <div class="footer-col">
+          <h4>Project</h4>
+          <a href="https://github.com/MayBeThat/URLite_Group7" target="_blank" rel="noopener">GitHub Repository</a>
+          <span>Nature of Programming Languages</span>
+        </div>
+        <div class="footer-col">
+          <h4>Tech Stack</h4>
+          <span>Rust · Actix-web · SQLite</span>
+          <span>HTML · CSS · Vanilla JS</span>
+        </div>
+      </div>
+      <div class="footer-bottom">Group 7 · 2026</div>
     </footer>
   </main>
 
@@ -167,7 +184,16 @@
   <main id="page-dashboard" class="page-wrap" style="display:none;">
     <div class="page-content">
       <h2 class="dashboard-heading">Dashboard</h2>
-      <p id="dash-summary" class="dash-summary"></p>
+      <div class="stat-cards">
+        <div class="stat-card">
+          <p class="stat-num" id="stat-links">0</p>
+          <p class="stat-lbl">Total Links</p>
+        </div>
+        <div class="stat-card">
+          <p class="stat-num" id="stat-clicks">0</p>
+          <p class="stat-lbl">Total Clicks</p>
+        </div>
+      </div>
       <div class="card table-card">
         <div class="card-head">
           <p class="section-label">Your Links</p>

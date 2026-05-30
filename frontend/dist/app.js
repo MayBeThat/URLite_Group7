@@ -275,17 +275,12 @@ function renderHistory() {
   const list = document.getElementById('history-list');
   if (!list) return;
 
-  // Summary bar
-  const summaryEl = document.getElementById('dash-summary');
-  if (summaryEl) {
-    if (linkHistory.length > 0) {
-      const totalClicks = linkHistory.reduce((sum, i) => sum + (i.click_count || 0), 0);
-      const lStr = `${linkHistory.length} link${linkHistory.length > 1 ? 's' : ''}`;
-      const cStr = `${totalClicks} total click${totalClicks !== 1 ? 's' : ''}`;
-      summaryEl.textContent = `${lStr} · ${cStr}`;
-    } else {
-      summaryEl.textContent = '';
-    }
+  // Stat cards
+  const linksEl  = document.getElementById('stat-links');
+  const clicksEl = document.getElementById('stat-clicks');
+  if (linksEl && clicksEl) {
+    linksEl.textContent  = linkHistory.length;
+    clicksEl.textContent = linkHistory.reduce((s, i) => s + (i.click_count || 0), 0);
   }
 
   if (linkHistory.length === 0) {
