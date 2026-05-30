@@ -1,13 +1,6 @@
-// ============================================================
-//  URLite – app.js
-//  Plain JavaScript: no frameworks, no build step.
-//  API runs on the same server (port 8080).
-// ============================================================
+// URLite – app.js (plain JS, no build step, API on same origin)
 
-
-// ============================================================
-//  1. STATE
-// ============================================================
+// === STATE ===
 let currentTab  = 'login';      // which tab is active in auth modal
 let lastResult  = null;         // last { short_code, short_url } from /shorten
 let linkHistory = [];           // all user links (loaded from GET /urls)
@@ -16,11 +9,7 @@ let pendingUrl  = null;         // URL saved when user tried to shorten before l
 let prevPage    = 'page-main';  // page before navigating to stats
 
 
-// ============================================================
-//  2. PAGE NAVIGATION
-//     Two "pages": page-main (always starts visible) and page-stats.
-//     Auth is handled via modal overlay, not a separate page.
-// ============================================================
+// === PAGE NAVIGATION ===
 
 const PAGES = ['page-main', 'page-dashboard', 'page-stats'];
 
@@ -54,12 +43,7 @@ function goBack() {
 }
 
 
-// ============================================================
-//  3. AUTH MODAL
-//     Opens as an overlay on top of the main page.
-//     Triggered by header buttons or when Shorten is clicked
-//     without being logged in.
-// ============================================================
+// === AUTH MODAL ===
 
 function openAuthModal(tab) {
   document.getElementById('modal-backdrop').classList.add('open');
@@ -81,11 +65,7 @@ document.addEventListener('keydown', e => {
 });
 
 
-// ============================================================
-//  4. HEADER
-//     Shows username + logout when logged in,
-//     or login / sign-up buttons when logged out.
-// ============================================================
+// === HEADER ===
 
 function updateHeader() {
   const token   = localStorage.getItem('auth_token');
@@ -117,9 +97,7 @@ function updateHeader() {
 }
 
 
-// ============================================================
-//  5. AUTHENTICATION
-// ============================================================
+// === AUTHENTICATION ===
 
 function switchTab(tab) {
   currentTab = tab;
@@ -211,9 +189,7 @@ function logout() {
 }
 
 
-// ============================================================
-//  6. URL SHORTENING
-// ============================================================
+// === URL SHORTENING ===
 
 async function handleShorten(event) {
   event.preventDefault();
@@ -334,9 +310,7 @@ function renderHistory() {
 }
 
 
-// ============================================================
-//  7. STATISTICS
-// ============================================================
+// === STATISTICS ===
 
 async function loadStats(code) {
   prevPage = currentPage();
@@ -463,9 +437,7 @@ function renderChart(clicks) {
 }
 
 
-// ============================================================
-//  8. UTILITIES
-// ============================================================
+// === UTILITIES ===
 
 // Decode the JWT payload to get the username (stored in 'sub' claim).
 // We only read the payload — we never verify the signature in the browser.
@@ -515,12 +487,7 @@ function show(id) { document.getElementById(id).style.display = 'block'; }
 function hide(id) { document.getElementById(id).style.display = 'none';  }
 
 
-// ============================================================
-//  9. STARTUP
-//     Always show the main page.
-//     If JWT found in localStorage → load user's links.
-//     If not → initialise the auth tab state.
-// ============================================================
+// === STARTUP ===
 
 function init() {
   showPage('page-main');
