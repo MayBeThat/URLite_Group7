@@ -10,7 +10,7 @@ services:
       - JWT_SECRET=qA2maSzyUaGpSsO95SR7IrUr2imQVebviYhlgWiGllt
       - PORT=8080
       - BASE_URL=http://localhost:8080
-      - ALLOWED_ORIGIN=http://localhost:3000
+      - ALLOWED_ORIGIN=http://localhost:8080
     volumes:
       - ./server/data:/app/data
       - ./frontend/dist:/app/frontend:ro

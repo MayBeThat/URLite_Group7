@@ -103,7 +103,11 @@ url-shortener/
 
 ## 3. Quick start with Docker
 
-Prerequisites: Docker 20 or newer with Compose v2.
+Prerequisites:
+
+- Docker Desktop 4.x (macOS, Windows) or Docker Engine 20+ (Linux).
+- On Windows, Docker Desktop requires the WSL2 backend, which is enabled by default in recent installers. If you do not have WSL2, follow Microsoft's installation guide before running Docker Desktop.
+- Compose v2 is bundled with Docker Desktop and Docker Engine 20.10+; no separate install is needed.
 
 From the repository root:
 
@@ -130,28 +134,59 @@ docker exec -it urlite-server /bin/sh  Open a shell inside the container
 
 ## 4. Running the server without Docker
 
-Prerequisites: Rust 1.88 or newer (install via [rustup](https://rustup.rs)) and a working C linker (clang or gcc).
+Prerequisites:
+
+- Rust 1.88 or newer:
+  - macOS / Linux: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+  - Windows: download and run [`rustup-init.exe`](https://www.rust-lang.org/tools/install). Accept the default host triple `x86_64-pc-windows-msvc` when prompted. The installer will offer to fetch the Visual Studio Build Tools if they are missing; accept this.
+- A working C linker:
+  - macOS: Xcode Command Line Tools (`xcode-select --install`).
+  - Linux: `gcc` or `clang` from your distribution.
+  - Windows: included with the Visual Studio Build Tools installed above.
+
+Open a terminal at the repository root and switch into the server crate:
 
 ```
 cd server
-cargo run                       Debug build, prints "Server running at ..." when ready
-cargo build --release           Optimized binary at target/release/server
-cargo test                      (no tests defined yet)
-cargo clippy -- -D warnings     Run the linter and fail on warnings
 ```
 
-The server reads `server/.env` via `dotenvy`, opens the SQLite file in `DATABASE_URL`, applies migrations, and listens on `PORT`. A minimal `server/.env` looks like:
+Create `server/.env`. Pick the snippet that matches your shell.
+
+bash / zsh / Git Bash (macOS, Linux, or Windows with Git for Windows):
 
 ```
+cat > .env <<'EOF'
 DATABASE_URL=sqlite://data/urls.db?mode=rwc
 JWT_SECRET=replace-me-with-a-real-secret
 PORT=8080
 BASE_URL=http://localhost:8080
-ALLOWED_ORIGIN=http://localhost:3000
+ALLOWED_ORIGIN=http://localhost:8080
 FRONTEND_DIR=../frontend/dist
+EOF
 ```
 
-`FRONTEND_DIR` must point at the static assets if you also want the server to serve the SPA at `GET /`. Without it the server defaults to the Docker path `/app/frontend`, which does not exist on the host, and `GET /` will return 404.
+PowerShell (Windows):
+
+```
+@'
+DATABASE_URL=sqlite://data/urls.db?mode=rwc
+JWT_SECRET=replace-me-with-a-real-secret
+PORT=8080
+BASE_URL=http://localhost:8080
+ALLOWED_ORIGIN=http://localhost:8080
+FRONTEND_DIR=../frontend/dist
+'@ | Out-File -FilePath .env -Encoding utf8
+```
+
+Then build and run:
+
+```
+cargo run                       Debug build, prints "Server running at ..." when ready
+cargo build --release           Optimized binary at target/release/server
+cargo clippy -- -D warnings     Run the linter and fail on warnings
+```
+
+The server reads `server/.env` via `dotenvy`, opens the SQLite file in `DATABASE_URL`, applies migrations, and listens on `PORT`. `FRONTEND_DIR` must point at the static assets if you also want the server to serve the SPA at `GET /`. Without it the server defaults to the Docker path `/app/frontend`, which does not exist on the host, and `GET /` will return 404.
 
 ---
 
@@ -165,7 +200,13 @@ When the Rust server is running, either via Docker or `cargo run` with `FRONTEND
 
 (b) Directly with a static HTTP server
 
-You can serve `frontend/dist/` with any static server (for example `python3 -m http.server 3000` from inside that directory), but every API call in `app.js` uses a relative path such as `/shorten`. If the SPA is loaded from `http://localhost:3000`, those calls hit port 3000, not the backend, and will fail. Use mode (a) for any meaningful testing.
+You can serve `frontend/dist/` with any static server, for example:
+
+- macOS / Linux: `python3 -m http.server` from inside `frontend/dist/`.
+- Windows (PowerShell): `python -m http.server` from inside `frontend/dist/`. The default Python on Windows is `python`, not `python3`.
+- VS Code: install the Live Server extension and right-click `index.html` -> "Open with Live Server".
+
+This loads the SPA from a different origin than the backend (port 8000 or 5500 vs 8080), so the relative paths in `app.js` (`/shorten`, `/urls`, ...) will hit the static server, not the API, and every request fails. Use mode (a) for any meaningful testing.
 
 Editing the frontend is just editing the files in `frontend/dist/` and reloading the browser. When running under Docker the bind mount makes changes visible immediately; you do not need to rebuild the image.
 
@@ -181,7 +222,7 @@ Set inline in `docker-compose.yml` for the Docker workflow, or in `server/.env` 
 | JWT_SECRET      | Yes      | -                        | HMAC secret used to sign JWT tokens. Replace before any deployment. |
 | PORT            | No       | 8080                     | HTTP listen port. |
 | BASE_URL        | No       | http://localhost:{PORT}  | Origin used to construct the `short_url` field in API responses. |
-| ALLOWED_ORIGIN  | No       | http://localhost:3000    | Value sent in the CORS `Access-Control-Allow-Origin` header. |
+| ALLOWED_ORIGIN  | No       | http://localhost:8080    | Value sent in the CORS `Access-Control-Allow-Origin` header. Matches `BASE_URL` by default because the backend serves both the API and the SPA from the same origin. |
 | FRONTEND_DIR    | No       | /app/frontend            | Filesystem path served for `GET /` and the static-file fallback in the redirect handler. |
 
 ---
@@ -202,6 +243,12 @@ Inspect the database with the `sqlite3` CLI:
 sqlite3 server/data/urls.db ".tables"
 sqlite3 server/data/urls.db "SELECT id, username FROM users;"
 sqlite3 server/data/urls.db "SELECT short_code, original_url FROM urls ORDER BY id DESC LIMIT 5;"
+```
+
+macOS and most Linux distributions ship with `sqlite3` preinstalled. On Windows, download the precompiled `sqlite-tools-win-x64-*.zip` from [sqlite.org/download.html](https://www.sqlite.org/download.html) and place `sqlite3.exe` on your `PATH`. As an alternative that works on any host, run the queries through the running container:
+
+```
+docker exec urlite-server sqlite3 /app/data/urls.db ".tables"
 ```
 
 ---
@@ -319,7 +366,9 @@ Passwords are hashed with `bcrypt` at the default cost (12) before storage. The 
 
 ## 10. Smoke test with cURL
 
-This sequence exercises every endpoint end-to-end.
+This sequence exercises every endpoint end-to-end. `curl` is available on macOS, Linux, and Windows 10+ (Windows ships `curl.exe`, which is the real curl). Pick the block that matches your shell.
+
+bash / zsh (macOS, Linux, Git Bash on Windows). Requires `jq` for parsing the JWT (install via `brew install jq`, `apt install jq`, or [jqlang.github.io/jq](https://jqlang.github.io/jq/)):
 
 ```
 BASE=http://localhost:8080
@@ -353,6 +402,40 @@ curl -H "Authorization: Bearer $TOKEN" $BASE/urls
 curl -X DELETE -H "Authorization: Bearer $TOKEN" $BASE/urls/<short_code>
 ```
 
+PowerShell (Windows). Uses `curl.exe` to avoid the built-in `Invoke-WebRequest` alias and `ConvertFrom-Json` instead of `jq`:
+
+```
+$BASE = "http://localhost:8080"
+
+# Register
+curl.exe -X POST "$BASE/auth/register" `
+  -H "Content-Type: application/json" `
+  -d '{"username":"alice","password":"secret123"}'
+
+# Log in and store the token
+$TOKEN = (curl.exe -s -X POST "$BASE/auth/login" `
+  -H "Content-Type: application/json" `
+  -d '{"username":"alice","password":"secret123"}' | ConvertFrom-Json).token
+
+# Create a short URL
+curl.exe -X POST "$BASE/shorten" `
+  -H "Authorization: Bearer $TOKEN" `
+  -H "Content-Type: application/json" `
+  -d '{"original_url":"https://example.com"}'
+
+# Visit the short URL (logs a click and returns 301)
+curl.exe -I "$BASE/<short_code>"
+
+# Inspect analytics
+curl.exe -H "Authorization: Bearer $TOKEN" "$BASE/stats/<short_code>"
+
+# List the caller's URLs
+curl.exe -H "Authorization: Bearer $TOKEN" "$BASE/urls"
+
+# Delete the URL
+curl.exe -X DELETE -H "Authorization: Bearer $TOKEN" "$BASE/urls/<short_code>"
+```
+
 ---
 
 ## 11. Tech stack
@@ -379,3 +462,4 @@ curl -X DELETE -H "Authorization: Bearer $TOKEN" $BASE/urls/<short_code>
 - HTTPS is not configured at the server. Place this behind a reverse proxy (nginx, Caddy, Traefik) for TLS termination.
 - The `URLite/` submodule is unused at runtime. It points at a separate prototype repo and is kept only because the `.gitmodules` entry was created earlier in the project.
 - The frontend uses relative paths for every API call, so it must always be served from the same origin as the backend.
+- The project has been used on macOS and Windows. The simplest cross-platform path is `docker compose` (with the WSL2 backend on Windows). The `cargo run` path additionally requires a host Rust toolchain: rustup on macOS / Linux, or `rustup-init.exe` plus the MSVC Build Tools on Windows.

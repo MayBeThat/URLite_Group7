@@ -29,7 +29,7 @@ async fn main() -> std::io::Result<()> {
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let jwt_secret   = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
     let allowed_origin = std::env::var("ALLOWED_ORIGIN")
-        .unwrap_or_else(|_| "http://localhost:3000".to_string());
+        .unwrap_or_else(|_| "http://localhost:8080".to_string());
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let base_url = std::env::var("BASE_URL")
         .unwrap_or_else(|_| format!("http://localhost:{port}"));
