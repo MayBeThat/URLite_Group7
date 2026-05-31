@@ -247,7 +247,7 @@ function copyLink(btn) {
 }
 
 async function deleteLink(code) {
-  if (!confirm('Xóa link này?')) return;
+  if (!confirm('Delete this link?')) return;
   try {
     await apiRequest(`/urls/${code}`, { method: 'DELETE' });
     linkHistory = linkHistory.filter(item => item.short_code !== code);

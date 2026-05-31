@@ -14,7 +14,7 @@
   <!-- Chart.js for analytics -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
 
@@ -39,18 +39,31 @@
     <!-- Hero section -->
     <section class="hero">
       <div class="hero-inner">
+        <span class="hero-eyebrow">URL SHORTENER + ANALYTICS</span>
         <h1>Shorten your URLs,<br /><span class="text-blue">track every click.</span></h1>
-        <p class="hero-sub">Free, fast, and powerful — with built-in analytics.</p>
+        <p class="hero-sub">Free, fast, and powerful — with built-in click analytics.</p>
 
         <form id="shorten-form" onsubmit="handleShorten(event)">
-          <div class="shorten-bar">
-            <input type="url" id="long-url"
-                   placeholder="Paste your long URL here..." />
-            <button type="submit" class="btn btn-primary" id="shorten-btn">Shorten!</button>
+          <div class="shorten-card">
+            <label class="shorten-label" for="long-url">
+              <svg class="shorten-label-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M22 2 11 13"/>
+                <path d="M22 2 15 22l-4-9-9-4 20-7z"/>
+              </svg>
+              Long URL <span class="shorten-required">*</span>
+            </label>
+            <input type="url" id="long-url" placeholder="Paste long URL here" />
+            <button type="submit" id="shorten-btn">Shorten Link</button>
           </div>
         </form>
 
         <p id="shorten-error" class="msg-error" style="display:none;"></p>
+
+        <ul class="hero-features">
+          <li><span class="hero-check">✓</span> No sign-up to redirect</li>
+          <li><span class="hero-check">✓</span> Real-time click tracking</li>
+          <li><span class="hero-check">✓</span> Built with Rust + Actix</li>
+        </ul>
       </div>
     </section>
 

@@ -1,12 +1,20 @@
-use actix_web::HttpMessage;
-use actix_web::{get, post, web, HttpRequest, HttpResponse, Responder};
+use actix_files::NamedFile;
+use actix_web::{delete, get, post, web, HttpMessage, HttpRequest, HttpResponse};
 use chrono::NaiveDateTime;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
 
-use crate::db::analytics;
-use crate::models::Claims;
+use crate::db::{analytics, clicks};
+use crate::error::{AppError, AppResult};
+use crate::models::{BaseUrl, Claims, FrontendDir, JwtSecret};
+
+const ERR_NOT_FOUND: &str = "Short URL not found";
+const ERR_INVALID_URL: &str = "original_url must start with http:// or https://";
+const ERR_MISSING_AUTH: &str = "Missing Authorization header";
+const ERR_INVALID_AUTH: &str = "Invalid Authorization header format";
+const ERR_INVALID_TOKEN: &str = "Invalid or expired token";
+const ERR_UNAUTHORIZED: &str = "Unauthorized";
 
 #[derive(Deserialize)]
 pub struct ShortenRequest {
@@ -31,85 +39,71 @@ pub struct StatsResponse {
     pub short_code: String,
     pub original_url: String,
     pub created_at: NaiveDateTime,
-    pub total_clicks: i64,
-    pub clicks_per_day: Vec<analytics::DailyClick>,
-    pub recent_clicks: Vec<ClickRecord>,
+    pub click_count: i64,
+    pub clicks: Vec<ClickRecord>,
 }
 
 #[derive(Serialize)]
-pub struct UrlItem {
+pub struct UrlListItem {
     pub short_code: String,
     pub short_url: String,
     pub original_url: String,
-    pub created_at: NaiveDateTime,
-    pub total_clicks: i64,
-    pub clicks_per_day: Vec<analytics::DailyClick>,
-    pub recent_clicks: Vec<ClickRecord>,
+    pub created_at: String,
+    pub click_count: i64,
 }
 
-fn claims_from_extensions(req: &HttpRequest) -> Result<Claims, actix_web::Error> {
+fn claims_from_extensions(req: &HttpRequest) -> AppResult<Claims> {
     req.extensions()
         .get::<Claims>()
         .cloned()
-        .ok_or_else(|| {
-            actix_web::error::ErrorUnauthorized(
-                serde_json::json!({"error": "Unauthorized"}).to_string(),
-            )
-        })
+        .ok_or(AppError::Unauthorized(ERR_UNAUTHORIZED))
 }
 
-fn require_jwt(req: &HttpRequest, jwt_secret: &str) -> Result<Claims, actix_web::Error> {
+fn require_jwt(req: &HttpRequest, jwt_secret: &str) -> AppResult<Claims> {
     let header = req
         .headers()
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| json_err(StatusCode::UNAUTHORIZED, "Missing Authorization header"))?;
+        .ok_or(AppError::Unauthorized(ERR_MISSING_AUTH))?;
 
     let token = header
         .strip_prefix("Bearer ")
-        .ok_or_else(|| json_err(StatusCode::UNAUTHORIZED, "Invalid Authorization header format"))?;
+        .ok_or(AppError::Unauthorized(ERR_INVALID_AUTH))?;
 
-    let token_data = decode::<Claims>(
+    decode::<Claims>(
         token,
         &DecodingKey::from_secret(jwt_secret.as_bytes()),
         &Validation::default(),
     )
-    .map_err(|_| json_err(StatusCode::UNAUTHORIZED, "Invalid or expired token"))?;
-
-    Ok(token_data.claims)
+    .map(|d| d.claims)
+    .map_err(|_| AppError::Unauthorized(ERR_INVALID_TOKEN))
 }
 
-#[post("/shorten")]
+#[post("")]
 pub async fn shorten(
     req: HttpRequest,
     body: web::Json<ShortenRequest>,
     db: web::Data<SqlitePool>,
-    base_url: web::Data<String>,
-) -> Result<impl Responder, actix_web::Error> {
+    base_url: web::Data<BaseUrl>,
+) -> AppResult<HttpResponse> {
     let claims = claims_from_extensions(&req)?;
 
     if !body.original_url.starts_with("http://") && !body.original_url.starts_with("https://") {
-        return Err(json_err(
-            StatusCode::BAD_REQUEST,
-            "original_url must start with http:// or https://",
-        ));
+        return Err(AppError::BadRequest(ERR_INVALID_URL));
     }
 
-    let user_row = sqlx::query("SELECT id FROM users WHERE username = ?")
+    let user_id: Option<i64> = sqlx::query("SELECT id FROM users WHERE username = ?")
         .bind(&claims.sub)
         .fetch_optional(db.get_ref())
-        .await
-        .map_err(actix_web::error::ErrorInternalServerError)?;
-
-    let user_id: Option<i64> = user_row.map(|r| r.get("id"));
+        .await?
+        .map(|r| r.get("id"));
 
     let code = loop {
         let candidate = nanoid::nanoid!(6);
         let exists = sqlx::query("SELECT id FROM urls WHERE short_code = ?")
             .bind(&candidate)
             .fetch_optional(db.get_ref())
-            .await
-            .map_err(actix_web::error::ErrorInternalServerError)?;
+            .await?;
         if exists.is_none() {
             break candidate;
         }
@@ -120,11 +114,10 @@ pub async fn shorten(
         .bind(&body.original_url)
         .bind(user_id)
         .execute(db.get_ref())
-        .await
-        .map_err(actix_web::error::ErrorInternalServerError)?;
+        .await?;
 
     Ok(HttpResponse::Ok().json(ShortenResponse {
-        short_url: format!("{}/{}", base_url.as_ref(), code),
+        short_url: format!("{}/{}", base_url.0, code),
         short_code: code,
     }))
 }
@@ -134,46 +127,36 @@ pub async fn redirect(
     req: HttpRequest,
     path: web::Path<String>,
     db: web::Data<SqlitePool>,
-) -> Result<impl Responder, actix_web::Error> {
+    frontend_dir: web::Data<FrontendDir>,
+) -> AppResult<HttpResponse> {
     let code = path.into_inner();
 
     if code == "api" || code == "health" {
-        return Err(actix_web::error::ErrorNotFound("not found"));
+        return Err(AppError::NotFound(ERR_NOT_FOUND));
     }
 
     let row = sqlx::query("SELECT id, original_url FROM urls WHERE short_code = ?")
         .bind(&code)
         .fetch_optional(db.get_ref())
-        .await
-        .map_err(actix_web::error::ErrorInternalServerError)?
-        .ok_or_else(|| {
-            actix_web::error::ErrorNotFound(
-                serde_json::json!({"error": "Short URL not found"}).to_string(),
-            )
-        })?;
+        .await?;
 
-    let url_id: i64 = row.get("id");
-    let original_url: String = row.get("original_url");
+    if let Some(row) = row {
+        let url_id: i64 = row.get("id");
+        let original_url: String = row.get("original_url");
 
-    let ip = req.connection_info().peer_addr().map(str::to_string);
-    let ua = req
-        .headers()
-        .get("User-Agent")
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_string);
-    let clicked_at = chrono::Utc::now().to_rfc3339();
+        clicks::log_click(db.get_ref(), url_id, &req).await?;
 
-    sqlx::query("INSERT INTO clicks (url_id, ip_address, user_agent) VALUES (?, ?, ?)")
-        .bind(url_id)
-        .bind(ip)
-        .bind(ua)
-        .execute(db.get_ref())
-        .await
-        .map_err(actix_web::error::ErrorInternalServerError)?;
+        return Ok(HttpResponse::MovedPermanently()
+            .insert_header(("Location", original_url))
+            .finish());
+    }
 
-    Ok(HttpResponse::MovedPermanently()
-        .insert_header(("Location", original_url))
-        .finish())
+    let file_path = std::path::Path::new(&frontend_dir.0).join(&code);
+    if file_path.is_file() {
+        return Ok(NamedFile::open(file_path)?.into_response(&req));
+    }
+
+    Err(AppError::NotFound(ERR_NOT_FOUND))
 }
 
 #[get("/stats/{code}")]
@@ -181,49 +164,24 @@ pub async fn get_stats(
     req: HttpRequest,
     path: web::Path<String>,
     db: web::Data<SqlitePool>,
-    jwt_secret: web::Data<String>,
-) -> Result<impl Responder, actix_web::Error> {
-    let claims = claims_from_extensions(&req)
-        .or_else(|_| require_jwt(&req, &jwt_secret))?;
-
+    jwt_secret: web::Data<JwtSecret>,
+) -> AppResult<HttpResponse> {
+    let claims = claims_from_extensions(&req).or_else(|_| require_jwt(&req, &jwt_secret.0))?;
     let code = path.into_inner();
 
     let stats = analytics::get_url_stats(db.get_ref(), &code, &claims.sub)
-        .await
-        .map_err(actix_web::error::ErrorInternalServerError)?
-        .ok_or_else(|| {
-            actix_web::error::ErrorNotFound(
-                serde_json::json!({"error": "Short URL not found"}).to_string(),
-            )
-        })?;
-
-    let url_row = sqlx::query("SELECT id FROM urls WHERE short_code = ?")
-        .bind(&code)
-        .fetch_optional(db.get_ref())
-        .await
-        .map_err(actix_web::error::ErrorInternalServerError)?
-        .ok_or_else(|| {
-            actix_web::error::ErrorNotFound(
-                serde_json::json!({"error": "Short URL not found"}).to_string(),
-            )
-        })?;
-
-    let url_id: i64 = url_row.get("id");
-
-    let clicks_per_day = analytics::get_daily_clicks(db.get_ref(), url_id)
-        .await
-        .map_err(actix_web::error::ErrorInternalServerError)?;
+        .await?
+        .ok_or(AppError::NotFound(ERR_NOT_FOUND))?;
 
     let click_rows = sqlx::query(
         "SELECT clicked_at, ip_address, user_agent \
          FROM clicks WHERE url_id = ? ORDER BY clicked_at DESC LIMIT 50",
     )
-    .bind(url_id)
+    .bind(stats.id)
     .fetch_all(db.get_ref())
-    .await
-    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERR))?;
+    .await?;
 
-    let recent_clicks: Vec<ClickRecord> = click_rows
+    let clicks: Vec<ClickRecord> = click_rows
         .into_iter()
         .map(|r| ClickRecord {
             clicked_at: r.get("clicked_at"),
@@ -236,8 +194,76 @@ pub async fn get_stats(
         short_code: stats.short_code,
         original_url: stats.original_url,
         created_at: stats.created_at,
-        total_clicks: stats.total_clicks,
-        clicks_per_day,
-        recent_clicks,
+        click_count: stats.total_clicks,
+        clicks,
     }))
+}
+
+#[get("")]
+pub async fn list_urls(
+    req: HttpRequest,
+    db: web::Data<SqlitePool>,
+    base_url: web::Data<BaseUrl>,
+) -> AppResult<HttpResponse> {
+    let claims = claims_from_extensions(&req)?;
+
+    let rows = sqlx::query(
+        r#"
+        SELECT u.short_code, u.original_url, u.created_at,
+               COUNT(c.id) AS click_count
+        FROM urls u
+        INNER JOIN users us ON us.id = u.user_id
+        LEFT JOIN clicks c ON c.url_id = u.id
+        WHERE us.username = ?
+        GROUP BY u.id
+        ORDER BY u.created_at DESC
+        "#,
+    )
+    .bind(&claims.sub)
+    .fetch_all(db.get_ref())
+    .await?;
+
+    let items: Vec<UrlListItem> = rows
+        .into_iter()
+        .map(|r| {
+            let code: String = r.get("short_code");
+            UrlListItem {
+                short_url: format!("{}/{}", base_url.0, code),
+                short_code: code,
+                original_url: r.get("original_url"),
+                created_at: r.get("created_at"),
+                click_count: r.get("click_count"),
+            }
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(items))
+}
+
+#[delete("/{code}")]
+pub async fn delete_url(
+    req: HttpRequest,
+    path: web::Path<String>,
+    db: web::Data<SqlitePool>,
+) -> AppResult<HttpResponse> {
+    let claims = claims_from_extensions(&req)?;
+    let code = path.into_inner();
+
+    let result = sqlx::query(
+        r#"
+        DELETE FROM urls
+        WHERE short_code = ?
+          AND user_id IN (SELECT id FROM users WHERE username = ?)
+        "#,
+    )
+    .bind(&code)
+    .bind(&claims.sub)
+    .execute(db.get_ref())
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound(ERR_NOT_FOUND));
+    }
+
+    Ok(HttpResponse::NoContent().finish())
 }

@@ -1,10 +1,14 @@
-use actix_web::{post, web, HttpResponse, Responder};
+use actix_web::{post, web, HttpResponse};
 use bcrypt::{hash, verify, DEFAULT_COST};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
 
-use crate::models::Claims;
+use crate::error::{AppError, AppResult};
+use crate::models::{Claims, JwtSecret};
+
+const ERR_USERNAME_TAKEN: &str = "Username already taken";
+const ERR_INVALID_CREDENTIALS: &str = "Invalid credentials";
 
 #[derive(Deserialize)]
 pub struct AuthRequest {
@@ -21,9 +25,8 @@ pub struct TokenResponse {
 pub async fn register(
     body: web::Json<AuthRequest>,
     db: web::Data<SqlitePool>,
-) -> Result<impl Responder, actix_web::Error> {
-    let password_hash = hash(&body.password, DEFAULT_COST)
-        .map_err(actix_web::error::ErrorInternalServerError)?;
+) -> AppResult<HttpResponse> {
+    let password_hash = hash(&body.password, DEFAULT_COST)?;
 
     sqlx::query("INSERT INTO users (username, password_hash) VALUES (?, ?)")
         .bind(&body.username)
@@ -31,12 +34,10 @@ pub async fn register(
         .execute(db.get_ref())
         .await
         .map_err(|e| match e {
-            sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
-                actix_web::error::ErrorConflict(
-                    serde_json::json!({"error": "Username already taken"}).to_string(),
-                )
+            sqlx::Error::Database(d) if d.is_unique_violation() => {
+                AppError::Conflict(ERR_USERNAME_TAKEN)
             }
-            other => actix_web::error::ErrorInternalServerError(other),
+            other => AppError::Internal(other.to_string()),
         })?;
 
     Ok(HttpResponse::Created()
@@ -47,27 +48,18 @@ pub async fn register(
 pub async fn login(
     body: web::Json<AuthRequest>,
     db: web::Data<SqlitePool>,
-    jwt_secret: web::Data<String>,
-) -> Result<impl Responder, actix_web::Error> {
+    jwt_secret: web::Data<JwtSecret>,
+) -> AppResult<HttpResponse> {
     let row = sqlx::query("SELECT password_hash FROM users WHERE username = ?")
         .bind(&body.username)
         .fetch_optional(db.get_ref())
-        .await
-        .map_err(actix_web::error::ErrorInternalServerError)?
-        .ok_or_else(|| {
-            actix_web::error::ErrorUnauthorized(
-                serde_json::json!({"error": "Invalid credentials"}).to_string(),
-            )
-        })?;
+        .await?
+        .ok_or(AppError::Unauthorized(ERR_INVALID_CREDENTIALS))?;
 
     let password_hash: String = row.get("password_hash");
-    let valid = verify(&body.password, &password_hash)
-        .map_err(actix_web::error::ErrorInternalServerError)?;
 
-    if !valid {
-        return Err(actix_web::error::ErrorUnauthorized(
-            serde_json::json!({"error": "Invalid credentials"}).to_string(),
-        ));
+    if !verify(&body.password, &password_hash)? {
+        return Err(AppError::Unauthorized(ERR_INVALID_CREDENTIALS));
     }
 
     let expiry = chrono::Utc::now()
@@ -79,13 +71,13 @@ pub async fn login(
         sub: body.username.clone(),
         exp: expiry,
     };
-    println!("DEBUG login jwt_secret: {}", jwt_secret.as_ref());
+
     let token = encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret(jwt_secret.as_bytes()),
+        &EncodingKey::from_secret(jwt_secret.0.as_bytes()),
     )
-    .map_err(actix_web::error::ErrorInternalServerError)?;
+    .map_err(|e| AppError::Internal(e.to_string()))?;
 
     Ok(HttpResponse::Ok().json(TokenResponse { token }))
 }
