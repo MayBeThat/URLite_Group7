@@ -2,6 +2,7 @@ use actix_web::{dev::ServiceRequest, Error, HttpMessage};
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 
+use crate::error::AppError;
 use crate::models::Claims;
 
 pub async fn validator(
@@ -9,9 +10,6 @@ pub async fn validator(
     credentials: BearerAuth,
 ) -> Result<ServiceRequest, (Error, ServiceRequest)> {
     let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
-
-    println!("DEBUG JWT_SECRET: {}", secret);
-    println!("DEBUG token: {}", credentials.token());
 
     let result = decode::<Claims>(
         credentials.token(),
@@ -24,12 +22,9 @@ pub async fn validator(
             req.extensions_mut().insert(token_data.claims);
             Ok(req)
         }
-        Err(e) => {
-            println!("DEBUG decode error: {:?}", e);
-            let error = actix_web::error::ErrorUnauthorized(
-                serde_json::json!({"error": "Invalid or expired token"}).to_string(),
-            );
-            Err((error, req))
-        }
+        Err(_) => Err((
+            AppError::Unauthorized("Invalid or expired token").into(),
+            req,
+        )),
     }
 }

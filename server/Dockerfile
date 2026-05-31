@@ -17,7 +17,8 @@ RUN rm -rf src
 COPY src ./src
 COPY migrations ./migrations
 
-# Build chính xác binary "server"
+# Touch main.rs to force Cargo to detect the real source changed
+RUN touch src/main.rs
 RUN cargo build --release --bin server
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────

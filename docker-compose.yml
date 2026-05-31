@@ -5,14 +5,14 @@ services:
       dockerfile: Dockerfile
     container_name: urlite-server
     restart: always
-    # THÊM ĐOẠN NÀY ĐỂ TRUYỀN BIẾN MÔI TRƯỜNG:
     environment:
-      - DATABASE_URL=sqlite:///app/data/urls.db
+      - DATABASE_URL=sqlite:///app/data/urls.db?mode=rwc
       - JWT_SECRET=qA2maSzyUaGpSsO95SR7IrUr2imQVebviYhlgWiGllt
       - PORT=8080
       - BASE_URL=http://localhost:8080
       - ALLOWED_ORIGIN=http://localhost:3000
     volumes:
       - ./server/data:/app/data
+      - ./frontend/dist:/app/frontend:ro
     ports:
       - "8080:8080"
