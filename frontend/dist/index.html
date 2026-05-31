@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>URLite — Free URL Shortener with Click Analytics</title>
+  <meta name="description" content="Shorten long URLs to short, trackable links. Free, fast, and powerful — with built-in click analytics. Built with Rust + Actix-web." />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%232563eb'/><text x='50%25' y='65%25' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='800' font-size='55'>U</text></svg>" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Chart.js for analytics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ===== HEADER ===== -->
+  <header id="app-header">
+    <div class="header-inner">
+      <a href="#" class="brand" onclick="goHome(); return false;">URLite</a>
+
+      <nav id="main-nav" style="display:none;">
+        <a href="#" onclick="goHome(); return false;">Home</a>
+        <a href="#" onclick="showDashboard(); return false;">Dashboard</a>
+      </nav>
+
+      <div id="auth-bar"></div>
+    </div>
+  </header>
+
+
+  <!-- ===== PAGE: MAIN (always visible) ===== -->
+  <main id="page-main" class="page-wrap">
+
+    <!-- Hero section -->
+    <section class="hero">
+      <div class="hero-inner">
+        <h1>Shorten your URLs,<br /><span class="text-blue">track every click.</span></h1>
+        <p class="hero-sub">Free, fast, and powerful — with built-in analytics.</p>
+
+        <form id="shorten-form" onsubmit="handleShorten(event)">
+          <div class="shorten-bar">
+            <input type="url" id="long-url"
+                   placeholder="Paste your long URL here..." />
+            <button type="submit" class="btn btn-primary" id="shorten-btn">Shorten!</button>
+          </div>
+        </form>
+
+        <p id="shorten-error" class="msg-error" style="display:none;"></p>
+      </div>
+    </section>
+
+    <!-- Result banner -->
+    <div id="result-banner" style="display:none;">
+      <div class="result-inner">
+        <div>
+          <p class="result-label">Your short link is ready</p>
+          <a id="result-link" href="#" target="_blank" class="result-url"></a>
+        </div>
+        <div class="result-actions">
+          <button class="btn btn-primary" onclick="copyLink(this)">Copy link</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Info sections -->
+    <section id="info-section">
+      <div class="info-content">
+
+        <div class="info-block">
+          <h2>Simple and fast URL shortener!</h2>
+          <p>
+            URLite allows you to shorten long links from Instagram, Facebook,
+            YouTube, Twitter, LinkedIn, WhatsApp, TikTok, blogs and any domain name.
+            Just paste the long URL and click the <strong>Shorten</strong> button.
+            After shortening the URL, check
+            <a href="#" onclick="goHome(); return false;">how many clicks it received</a>.
+          </p>
+        </div>
+
+        <div class="info-block">
+          <h2>Shorten, share and track</h2>
+          <p>
+            Your shortened URLs can be used in publications, documents,
+            advertisements, blogs, forums, instant messages, and other locations.
+            Track statistics for your projects by monitoring the number of hits
+            from your URL with our click counter.
+          </p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Feature cards -->
+    <section id="features-section">
+      <div class="features-grid">
+
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/>
+              <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+            </svg>
+          </div>
+          <h3>Easy</h3>
+          <p>URLite is easy and fast, enter the long link to get your shortened link</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+          </div>
+          <h3>Shortened</h3>
+          <p>Use any link, no matter what size, URLite always shortens</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <polyline points="9 12 11 14 15 10"/>
+            </svg>
+          </div>
+          <h3>Secure</h3>
+          <p>It is fast and secure, our service has HTTPS protocol and data encryption</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="20" x2="18" y2="10"/>
+              <line x1="12" y1="20" x2="12" y2="4"/>
+              <line x1="6"  y1="20" x2="6"  y2="14"/>
+            </svg>
+          </div>
+          <h3>Statistics</h3>
+          <p>Check the number of clicks that your shortened URL received</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          </div>
+          <h3>Reliable</h3>
+          <p>All links that try to disseminate spam, viruses and malware are deleted</p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="footer-inner">
+        <div class="footer-col">
+          <p class="footer-brand">URLite</p>
+          <p class="footer-tag">Shorten links. Track every click.</p>
+        </div>
+        <div class="footer-col">
+          <h4>Project</h4>
+          <a href="https://github.com/MayBeThat/URLite_Group7" target="_blank" rel="noopener">GitHub Repository</a>
+          <span>Nature of Programming Languages</span>
+        </div>
+        <div class="footer-col">
+          <h4>Tech Stack</h4>
+          <span>Rust · Actix-web · SQLite</span>
+          <span>HTML · CSS · Vanilla JS</span>
+        </div>
+      </div>
+      <div class="footer-bottom">Group 7 · 2026</div>
+    </footer>
+  </main>
+
+
+  <!-- ===== PAGE: DASHBOARD ===== -->
+  <main id="page-dashboard" class="page-wrap" style="display:none;">
+    <div class="page-content">
+      <h2 class="dashboard-heading">Dashboard</h2>
+      <div class="stat-cards">
+        <div class="stat-card">
+          <p class="stat-num" id="stat-links">0</p>
+          <p class="stat-lbl">Total Links</p>
+        </div>
+        <div class="stat-card">
+          <p class="stat-num" id="stat-clicks">0</p>
+          <p class="stat-lbl">Total Clicks</p>
+        </div>
+      </div>
+      <div class="card table-card">
+        <div class="card-head">
+          <p class="section-label">Your Links</p>
+        </div>
+        <div class="table-scroll">
+          <table class="links-table">
+            <thead>
+              <tr>
+                <th>Short Link</th>
+                <th>Original URL</th>
+                <th>Created</th>
+                <th class="text-right">Clicks</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="history-list"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+
+  <!-- ===== PAGE: STATS ===== -->
+  <main id="page-stats" class="page-wrap" style="display:none;">
+    <div class="page-content">
+      <a href="#" class="back-link" onclick="goBack(); return false;">← Back</a>
+
+      <!-- Loading -->
+      <div id="stats-loading" class="loading-wrap" style="display:none;">
+        <div class="spinner"></div>
+      </div>
+
+      <!-- Error -->
+      <div id="stats-error" class="card error-card" style="display:none;">
+        <p id="stats-error-title" class="error-title">Error</p>
+        <p id="stats-error-msg"   class="text-muted"></p>
+      </div>
+
+      <!-- Content -->
+      <div id="stats-content" style="display:none;">
+
+        <!-- Summary card -->
+        <div class="card" id="stats-summary"></div>
+
+        <!-- Chart card -->
+        <div class="card" id="stats-chart-card" style="display:none;">
+          <p class="section-label">Clicks over time</p>
+          <canvas id="stats-chart"></canvas>
+        </div>
+
+        <!-- Top User-Agents -->
+        <div class="card table-card" id="stats-ua-card" style="display:none;">
+          <div class="card-head"><p class="section-label">Top User-Agents</p></div>
+          <table>
+            <thead>
+              <tr><th>User-Agent</th><th class="text-right">Clicks</th></tr>
+            </thead>
+            <tbody id="stats-ua-body"></tbody>
+          </table>
+        </div>
+
+        <!-- Recent clicks -->
+        <div class="card table-card" id="stats-clicks-card" style="display:none;">
+          <div class="card-head"><p class="section-label">Recent clicks</p></div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr><th>Time (UTC)</th><th>IP Address</th><th>User-Agent</th></tr>
+              </thead>
+              <tbody id="stats-clicks-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+
+  <!-- ===== AUTH MODAL ===== -->
+  <div id="modal-backdrop" onclick="closeAuthModal()"></div>
+  <div id="modal-container">
+    <div class="modal-box">
+      <button class="modal-close" onclick="closeAuthModal()" aria-label="Close">×</button>
+
+      <div class="modal-title">
+        <h2>URLite</h2>
+        <p>Shorten links. Track their reach.</p>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab active" data-tab="login"    onclick="switchTab('login')">Log in</button>
+        <button class="tab"        data-tab="register" onclick="switchTab('register')">Sign up</button>
+      </div>
+
+      <!-- Form -->
+      <form id="auth-form" onsubmit="handleAuth(event)">
+        <div class="field">
+          <label for="auth-username">Username</label>
+          <input type="text" id="auth-username" placeholder="your_username"
+                 required autocomplete="username" />
+        </div>
+        <div class="field">
+          <label for="auth-password">Password</label>
+          <input type="password" id="auth-password" placeholder="••••••••"
+                 required minlength="6" autocomplete="current-password" />
+        </div>
+
+        <p id="auth-error"   class="msg-error"   style="display:none;"></p>
+        <p id="auth-success" class="msg-success" style="display:none;"></p>
+
+        <button type="submit" class="btn btn-primary full-width" id="auth-submit">
+          Log in
+        </button>
+      </form>
+
+      <p class="auth-footer" id="auth-switch"></p>
+    </div>
+  </div>
+
+
+  <script src="app.js"></script>
+</body>
+</html>
