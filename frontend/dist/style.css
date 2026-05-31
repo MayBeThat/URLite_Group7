@@ -536,11 +536,11 @@ input:focus {
 }
 .links-table th { font-size: 0.91rem; }
 #page-dashboard .section-label { font-size: 0.91rem; }
-.links-table th:nth-child(1), .links-table td:nth-child(1) { width: 30%; } /* Short Link */
-.links-table th:nth-child(2), .links-table td:nth-child(2) { width: 32%; } /* Original URL */
+.links-table th:nth-child(1), .links-table td:nth-child(1) { width: 26%; } /* Short Link */
+.links-table th:nth-child(2), .links-table td:nth-child(2) { width: 30%; } /* Original URL */
 .links-table th:nth-child(3), .links-table td:nth-child(3) { width: 13%; } /* Created */
 .links-table th:nth-child(4), .links-table td:nth-child(4) { width: 8%;  } /* Clicks */
-.links-table th:nth-child(5), .links-table td:nth-child(5) { width: 17%; } /* Actions */
+.links-table th:nth-child(5), .links-table td:nth-child(5) { width: 23%; } /* Actions */
 
 .links-table td.link-short {
   font-weight: 600;
