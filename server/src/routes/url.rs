@@ -36,6 +36,17 @@ pub struct StatsResponse {
     pub recent_clicks: Vec<ClickRecord>,
 }
 
+#[derive(Serialize)]
+pub struct UrlItem {
+    pub short_code: String,
+    pub short_url: String,
+    pub original_url: String,
+    pub created_at: NaiveDateTime,
+    pub total_clicks: i64,
+    pub clicks_per_day: Vec<analytics::DailyClick>,
+    pub recent_clicks: Vec<ClickRecord>,
+}
+
 fn claims_from_extensions(req: &HttpRequest) -> Result<Claims, actix_web::Error> {
     req.extensions()
         .get::<Claims>()
@@ -52,28 +63,18 @@ fn require_jwt(req: &HttpRequest, jwt_secret: &str) -> Result<Claims, actix_web:
         .headers()
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| {
-            actix_web::error::ErrorUnauthorized(
-                serde_json::json!({"error": "Missing Authorization header"}).to_string(),
-            )
-        })?;
+        .ok_or_else(|| json_err(StatusCode::UNAUTHORIZED, "Missing Authorization header"))?;
 
-    let token = header.strip_prefix("Bearer ").ok_or_else(|| {
-        actix_web::error::ErrorUnauthorized(
-            serde_json::json!({"error": "Invalid Authorization header format"}).to_string(),
-        )
-    })?;
+    let token = header
+        .strip_prefix("Bearer ")
+        .ok_or_else(|| json_err(StatusCode::UNAUTHORIZED, "Invalid Authorization header format"))?;
 
     let token_data = decode::<Claims>(
         token,
         &DecodingKey::from_secret(jwt_secret.as_bytes()),
         &Validation::default(),
     )
-    .map_err(|_| {
-        actix_web::error::ErrorUnauthorized(
-            serde_json::json!({"error": "Invalid or expired token"}).to_string(),
-        )
-    })?;
+    .map_err(|_| json_err(StatusCode::UNAUTHORIZED, "Invalid or expired token"))?;
 
     Ok(token_data.claims)
 }
@@ -88,9 +89,9 @@ pub async fn shorten(
     let claims = claims_from_extensions(&req)?;
 
     if !body.original_url.starts_with("http://") && !body.original_url.starts_with("https://") {
-        return Err(actix_web::error::ErrorBadRequest(
-            serde_json::json!({"error": "original_url must start with http:// or https://"})
-                .to_string(),
+        return Err(json_err(
+            StatusCode::BAD_REQUEST,
+            "original_url must start with http:// or https://",
         ));
     }
 
@@ -160,6 +161,7 @@ pub async fn redirect(
         .get("User-Agent")
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
+    let clicked_at = chrono::Utc::now().to_rfc3339();
 
     sqlx::query("INSERT INTO clicks (url_id, ip_address, user_agent) VALUES (?, ?, ?)")
         .bind(url_id)
@@ -219,7 +221,7 @@ pub async fn get_stats(
     .bind(url_id)
     .fetch_all(db.get_ref())
     .await
-    .map_err(actix_web::error::ErrorInternalServerError)?;
+    .map_err(|_| json_err(StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERR))?;
 
     let recent_clicks: Vec<ClickRecord> = click_rows
         .into_iter()

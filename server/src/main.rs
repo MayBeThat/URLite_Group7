@@ -43,7 +43,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         let cors = Cors::default()
             .allowed_origin(&allowed_origin)
-            .allowed_methods(vec!["GET", "POST"])
+            .allowed_methods(vec!["GET", "POST", "DELETE"])
             .allowed_headers(vec![
                 actix_web::http::header::AUTHORIZATION,
                 actix_web::http::header::CONTENT_TYPE,
@@ -61,14 +61,9 @@ async fn main() -> std::io::Result<()> {
             .service(health)
             .service(routes::auth::register)
             .service(routes::auth::login)
+            .service(routes::url::shorten)
+            .service(routes::url::get_stats)
             .service(routes::url::redirect)
-            // Protected routes
-            .service(
-                web::scope("/api")
-                    .wrap(auth)
-                    .service(routes::url::shorten)
-                    .service(routes::url::get_stats),
-            )
     })
     .bind(format!("0.0.0.0:{port}"))?
     .run()
