@@ -148,6 +148,7 @@ pub async fn redirect(
 
         return Ok(HttpResponse::MovedPermanently()
             .insert_header(("Location", original_url))
+            .insert_header(("Cache-Control", "no-store"))
             .finish());
     }
 
