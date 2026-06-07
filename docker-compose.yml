@@ -6,7 +6,7 @@ services:
     container_name: urlite-server
     restart: always
     environment:
-      - DATABASE_URL=sqlite:///app/data/urls.db?mode=rwc
+      - DATABASE_URL=sqlite:///app/data/Newurls.db?mode=rwc
       - JWT_SECRET=qA2maSzyUaGpSsO95SR7IrUr2imQVebviYhlgWiGllt
       - PORT=8080
       - BASE_URL=http://localhost:8080

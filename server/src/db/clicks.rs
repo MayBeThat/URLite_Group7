@@ -5,6 +5,7 @@ use crate::error::AppResult;
 
 pub async fn log_click(pool: &SqlitePool, url_id: i64, req: &HttpRequest) -> AppResult<()> {
     let ip = req.connection_info().peer_addr().map(str::to_string);
+
     let ua = req
         .headers()
         .get("User-Agent")

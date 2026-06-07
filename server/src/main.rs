@@ -42,7 +42,6 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Failed to connect to SQLite");
 
-    // Run pending migrations automatically on startup
     sqlx::migrate!("./migrations")
         .run(&pool)
         .await
